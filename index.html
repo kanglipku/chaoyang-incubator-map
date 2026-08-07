@@ -1,0 +1,1197 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>朝阳区产业孵化器地图 · Demo</title>
+<link rel="stylesheet" href="lib/leaflet.css">
+<style>
+  :root {
+    --bg: #f4f6fa;
+    --card: #ffffff;
+    --line: #e5e9f0;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --primary: #1e6fff;
+    --primary-weak: #eaf1ff;
+    --shadow: 0 2px 10px rgba(20, 40, 80, 0.08);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg); color: var(--text); overflow: hidden;
+  }
+
+  /* ===== 顶部 ===== */
+  header {
+    height: 60px; display: flex; align-items: center; gap: 12px;
+    padding: 0 20px; background: linear-gradient(90deg, #1453c9, #1e6fff);
+    color: #fff; box-shadow: 0 2px 8px rgba(20,60,150,.25); position: relative; z-index: 1000;
+  }
+  header .logo {
+    width: 34px; height: 34px; border-radius: 9px; background: rgba(255,255,255,.18);
+    display: flex; align-items: center; justify-content: center; font-size: 18px;
+  }
+  header h1 { font-size: 18px; font-weight: 600; letter-spacing: .5px; }
+  header .sub { font-size: 12px; opacity: .85; margin-top: 2px; }
+  header .spacer { flex: 1; }
+  .btn {
+    border: 1px solid rgba(255,255,255,.55); color: #fff; background: transparent;
+    padding: 7px 14px; border-radius: 8px; font-size: 13px; cursor: pointer; transition: all .15s;
+  }
+  .btn:hover { background: rgba(255,255,255,.16); }
+
+  /* ===== 主体布局 ===== */
+  .main { display: flex; height: calc(100% - 60px); }
+
+  /* ===== 侧边抽屉（默认收起，点击浮动按钮滑出） ===== */
+  .panel {
+    position: fixed; left: 0; top: 60px; bottom: 0; width: 340px; z-index: 1500;
+    background: var(--card); border-right: 1px solid var(--line);
+    display: flex; flex-direction: column; overflow: hidden;
+    transform: translateX(-100%); transition: transform .28s ease;
+    box-shadow: 0 6px 24px rgba(20,40,80,.18);
+  }
+  .panel.open { transform: translateX(0); }
+  .drawer-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 14px 0; font-size: 15px; font-weight: 700;
+  }
+  .drawer-head button {
+    border: none; background: var(--bg); width: 30px; height: 30px; border-radius: 8px;
+    font-size: 14px; color: var(--muted); cursor: pointer;
+  }
+  .drawer-head button:hover { background: var(--line); color: var(--text); }
+  .fab {
+    position: fixed; left: 14px; top: 74px; z-index: 1490;
+    display: flex; align-items: center; gap: 7px;
+    background: #fff; color: var(--primary); border: 1px solid var(--line);
+    border-radius: 999px; padding: 9px 16px; font-size: 13px; font-weight: 600; cursor: pointer;
+    box-shadow: 0 2px 10px rgba(20,40,80,.14);
+  }
+  .fab:hover { background: var(--primary-weak); }
+  .fab .ico { font-size: 15px; }
+  .stats {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px;
+  }
+  .stat {
+    background: var(--bg); border-radius: 10px; padding: 10px 12px;
+  }
+  .stat .num { font-size: 20px; font-weight: 700; color: var(--primary); }
+  .stat .lbl { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .filters { display: flex; flex-direction: column; gap: 8px; padding: 0 12px 10px; border-bottom: 1px solid var(--line); }
+  .filters input, .filters select {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
+    font-size: 13px; background: #fff; color: var(--text); outline: none;
+  }
+  .filters input:focus, .filters select:focus { border-color: var(--primary); }
+  .filters .row { display: flex; gap: 8px; }
+  .filters .row select { flex: 1; }
+  .list-head {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 14px 6px; font-size: 12px; color: var(--muted);
+  }
+  .list { flex: 1; overflow-y: auto; padding: 0 8px 12px; }
+  .item {
+    display: flex; gap: 10px; align-items: flex-start; padding: 10px;
+    border-radius: 10px; cursor: pointer; transition: background .12s; border: 1px solid transparent;
+  }
+  .item:hover { background: var(--primary-weak); }
+  .item.active { background: var(--primary-weak); border-color: #bcd4ff; }
+  .item .dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
+  .item .t { font-size: 13.5px; font-weight: 600; line-height: 1.4; }
+  .item .m { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .item .tag { font-size: 11px; color: #fff; border-radius: 4px; padding: 1px 6px; margin-top: 6px; display: inline-block; }
+  .empty { text-align: center; color: var(--muted); font-size: 13px; padding: 30px 10px; }
+
+  /* ===== 地图 ===== */
+  #map { flex: 1; position: relative; }
+  .map-legend {
+    position: absolute; left: 14px; bottom: 26px; z-index: 800;
+    background: rgba(255,255,255,.96); border-radius: 12px;
+    padding: 10px 14px; box-shadow: 0 4px 16px rgba(20,40,80,.18);
+    font-size: 13px; border: 1px solid var(--line); min-width: 168px;
+    backdrop-filter: blur(4px); cursor: pointer;
+  }
+  .map-legend .lg-head {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 13px; font-weight: 700; color: #111827;
+  }
+  .map-legend .lg-fold {
+    border: none; background: var(--bg); border-radius: 6px; width: 24px; height: 24px;
+    font-size: 12px; color: var(--muted); cursor: pointer; line-height: 1;
+    margin-left: 12px; flex-shrink: 0;
+  }
+  .map-legend .lg-fold:hover { background: var(--line); color: var(--text); }
+  .map-legend .lg-body { margin-top: 4px; }
+  .map-legend.collapsed { min-width: 0; padding: 8px 12px; }
+  .map-legend.collapsed .lg-body { display: none; }
+  .map-legend .lg-sec {
+    font-size: 12px; font-weight: 700; color: var(--muted);
+    padding: 6px 0 2px; border-top: 1px solid var(--line); margin-top: 6px;
+  }
+  .map-legend .lg-sec:first-child { border-top: none; margin-top: 0; padding-top: 2px; }
+  .map-legend .lg-row {
+    display: flex; align-items: center; gap: 9px; margin: 7px 0;
+    color: #374151; font-weight: 600; font-size: 13px;
+  }
+  .map-legend .lg-ico {
+    width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.25);
+  }
+  .map-legend .lg-n { margin-left: auto; color: var(--muted); font-weight: 500; font-size: 12px; }
+
+  /* 自定义标记 */
+  .pin { position: relative; }
+  .pin .circle {
+    width: 28px; height: 28px; border-radius: 50%;
+    border: 2.5px solid #fff;
+    box-shadow: 0 2px 8px rgba(0,0,0,.35);
+    transform: translate(-50%, -100%);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; line-height: 1;
+  }
+  .pin .circle::after {
+    content: ""; position: absolute; left: 50%; top: 100%; transform: translateX(-50%);
+    border: 5px solid transparent; border-top-width: 6px; margin-top: -2px;
+    border-top-color: var(--c, #fff);
+  }
+  .pin.big .circle { width: 38px; height: 38px; font-size: 20px; border-width: 3px; }
+  .pin .label {
+    position: absolute; left: 18px; top: -23px;
+    background: rgba(255,255,255,.95); color: #1f2937;
+    font-size: 11.5px; font-weight: 600; line-height: 1;
+    padding: 4px 7px; border-radius: 6px; white-space: nowrap;
+    box-shadow: 0 1px 5px rgba(0,0,0,.22); border: 1px solid rgba(0,0,0,.06);
+    max-width: 160px; overflow: hidden; text-overflow: ellipsis;
+    pointer-events: none;
+  }
+  .pin .lv {
+    position: absolute; left: 20px; top: -31px; z-index: 3;
+    width: 15px; height: 15px; border-radius: 50%;
+    border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.35);
+    font-size: 9px; font-weight: 700; color: #fff;
+    display: flex; align-items: center; justify-content: center; line-height: 1;
+    pointer-events: none;
+  }
+  .leaflet-popup-content-wrapper { border-radius: 12px; box-shadow: 0 6px 24px rgba(20,40,80,.18); }
+  .leaflet-popup-content { margin: 14px 16px; font-family: inherit; }
+  .pop-title { font-size: 14.5px; font-weight: 700; margin-bottom: 6px; line-height: 1.4; }
+  .pop-row { font-size: 12px; color: #4b5563; margin: 3px 0; }
+  .pop-row b { color: var(--text); }
+  .pop-tags { margin: 8px 0; }
+  .pop-tag { font-size: 11px; background: var(--primary-weak); color: var(--primary); border-radius: 4px; padding: 2px 7px; margin-right: 5px; }
+  .pop-btn {
+    display: block; width: 100%; text-align: center; margin-top: 10px;
+    background: var(--primary); color: #fff; border: none; border-radius: 8px;
+    padding: 8px 0; font-size: 13px; cursor: pointer;
+  }
+  .pop-btn:hover { background: #1453c9; }
+
+  /* ===== 详情视图 ===== */
+  .detail {
+    position: fixed; inset: 0; z-index: 2000; background: rgba(15, 30, 60, .45);
+    display: flex; align-items: center; justify-content: center; padding: 24px;
+  }
+  .detail.hidden, .help.hidden { display: none; }
+  .detail-card {
+    background: #fff; width: 100%; max-width: 780px; max-height: 88vh; overflow-y: auto;
+    border-radius: 16px; box-shadow: 0 20px 60px rgba(10,30,70,.35); animation: rise .25s ease;
+  }
+  @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+  .detail-hero {
+    background: linear-gradient(120deg, #1453c9, #1e6fff); color: #fff;
+    padding: 24px 28px; border-radius: 16px 16px 0 0; position: relative;
+  }
+  .detail-hero .back {
+    position: absolute; top: 18px; right: 18px; background: rgba(255,255,255,.18);
+    border: none; color: #fff; padding: 6px 14px; border-radius: 8px; font-size: 13px; cursor: pointer;
+  }
+  .detail-hero .back:hover { background: rgba(255,255,255,.3); }
+  .detail-hero .name { font-size: 21px; font-weight: 700; line-height: 1.4; padding-right: 80px; }
+  .detail-hero .meta { margin-top: 10px; font-size: 13px; opacity: .92; display: flex; gap: 14px; flex-wrap: wrap; }
+  .detail-body { padding: 24px 28px 28px; }
+  .ov-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 22px; }
+  .ov { background: var(--bg); border-radius: 10px; padding: 12px; text-align: center; }
+  .ov .n { font-size: 19px; font-weight: 700; color: var(--primary); }
+  .ov .l { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .sec-title { font-size: 14px; font-weight: 700; margin: 18px 0 10px; color: #111827; }
+  .kv-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .kv-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .kv-table td:first-child { width: 96px; color: var(--muted); font-weight: 500; }
+  .kv-table a { color: var(--primary); text-decoration: none; }
+  .kv-table a:hover { text-decoration: underline; }
+  .chip { display: inline-block; background: var(--primary-weak); color: var(--primary); font-size: 12px; border-radius: 6px; padding: 3px 9px; margin: 2px 4px 2px 0; }
+  .chip.gray { background: #eef1f6; color: #4b5563; }
+  .detail-desc { font-size: 13.5px; line-height: 1.8; color: #374151; background: #fafbfd; border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .locate-btn {
+    margin-top: 20px; width: 100%; background: var(--primary); color: #fff; border: none;
+    border-radius: 10px; padding: 12px; font-size: 14px; cursor: pointer;
+  }
+  .locate-btn:hover { background: #1453c9; }
+
+  /* ===== 帮助弹窗 ===== */
+  .help { position: fixed; inset: 0; z-index: 3000; background: rgba(15,30,60,.45); display: flex; align-items: center; justify-content: center; padding: 24px; }
+  .help-card { background: #fff; width: 100%; max-width: 640px; max-height: 86vh; overflow-y: auto; border-radius: 16px; padding: 26px 28px; box-shadow: 0 20px 60px rgba(10,30,70,.35); }
+  .help-card h2 { font-size: 18px; margin-bottom: 16px; }
+  .help-card h3 { font-size: 14px; margin: 16px 0 8px; color: #111827; }
+  .help-card ol { padding-left: 20px; font-size: 13.5px; line-height: 1.9; color: #374151; }
+  .help-card code { background: #f1f4f9; border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; font-size: 12.5px; font-family: "SF Mono", Menlo, monospace; }
+  .help-card .close { margin-top: 18px; width: 100%; background: var(--primary); color: #fff; border: none; border-radius: 10px; padding: 11px; font-size: 14px; cursor: pointer; }
+
+  /* ===== 对比功能 ===== */
+  .item .cb {
+    width: 16px; height: 16px; margin-top: 4px; flex-shrink: 0;
+    accent-color: var(--primary); cursor: pointer;
+  }
+  .cmp-bar {
+    position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+    z-index: 1600; background: #fff; border: 1px solid var(--line);
+    border-radius: 999px; box-shadow: 0 6px 24px rgba(20,40,80,.22);
+    display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 16px;
+    max-width: 92vw;
+  }
+  .cmp-bar.hidden { display: none; }
+  .cmp-bar .tt { font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+  .cmp-chips { display: flex; gap: 6px; overflow-x: auto; max-width: 42vw; }
+  .cmp-chip {
+    font-size: 11.5px; background: var(--primary-weak); color: var(--primary);
+    border-radius: 999px; padding: 3px 9px; white-space: nowrap; max-width: 110px;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .cmp-go {
+    border: none; background: var(--primary); color: #fff; border-radius: 999px;
+    padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
+  }
+  .cmp-go:hover { background: #1453c9; }
+  .cmp-clear {
+    border: 1px solid var(--line); background: #fff; color: var(--muted);
+    border-radius: 999px; padding: 7px 12px; font-size: 12.5px; cursor: pointer; white-space: nowrap;
+  }
+  .cmp-clear:hover { color: var(--text); border-color: #c3ccd8; }
+
+  /* ===== 对比页 ===== */
+  .compare {
+    position: fixed; inset: 0; z-index: 2200; background: rgba(15,30,60,.5);
+    display: flex; align-items: center; justify-content: center; padding: 24px;
+  }
+  .compare.hidden { display: none; }
+  .compare-card {
+    background: #fff; width: 100%; max-width: 1080px; max-height: 90vh;
+    border-radius: 16px; box-shadow: 0 20px 60px rgba(10,30,70,.35);
+    display: flex; flex-direction: column; overflow: hidden; animation: rise .25s ease;
+  }
+  .compare-head {
+    display: flex; align-items: center; gap: 12px; padding: 16px 20px;
+    border-bottom: 1px solid var(--line);
+  }
+  .compare-head h2 { font-size: 16px; }
+  .compare-head .back {
+    border: 1px solid var(--line); background: #fff; border-radius: 8px;
+    padding: 6px 14px; font-size: 13px; cursor: pointer; color: var(--text);
+  }
+  .compare-head .back:hover { background: var(--bg); }
+  .compare-wrap { overflow: auto; flex: 1; }
+  .cmp-table { border-collapse: collapse; width: 100%; font-size: 12.5px; min-width: 640px; }
+  .cmp-table th, .cmp-table td {
+    border: 1px solid var(--line); padding: 8px 10px; vertical-align: top; text-align: left;
+  }
+  .cmp-table thead th {
+    background: var(--primary-weak); color: var(--text); font-weight: 600;
+    min-width: 128px; max-width: 200px; font-size: 12.5px; line-height: 1.4;
+  }
+  .cmp-table thead th:first-child { background: var(--bg); min-width: 128px; }
+  .cmp-table .grp-row td {
+    background: #f0f4fa; font-weight: 600; color: var(--primary);
+    font-size: 12.5px; padding: 6px 10px;
+  }
+  .cmp-table td:first-child { background: var(--bg); color: #374151; font-weight: 500; width: 128px; }
+  .cmp-table .best { color: var(--primary); font-weight: 600; }
+  .cmp-remove {
+    border: none; background: rgba(255,255,255,.7); color: #888;
+    border-radius: 6px; width: 22px; height: 22px; cursor: pointer; font-size: 12px;
+    float: right; margin: -2px -4px 0 4px;
+  }
+  .cmp-remove:hover { background: #fdecec; color: #c0392b; }
+  .cmp-empty { text-align: center; color: var(--muted); padding: 40px 0; font-size: 13px; }
+
+  /* ===== 详情页指标分组 ===== */
+  .grp {
+    border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin-bottom: 14px;
+  }
+  .grp-title {
+    background: #f0f4fa; color: var(--primary); font-size: 13px; font-weight: 600;
+    padding: 9px 14px; border-bottom: 1px solid var(--line);
+  }
+  .grp table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .grp td { padding: 8px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .grp tr:last-child td { border-bottom: none; }
+  .grp td:first-child { width: 96px; color: var(--muted); font-weight: 500; }
+  .nav-row { display: flex; gap: 10px; margin-top: 20px; }
+  .nav-row .btn-main, .nav-row .btn-sub {
+    flex: 1; border-radius: 10px; padding: 12px; font-size: 14px; cursor: pointer; text-align: center;
+    text-decoration: none; display: inline-block;
+  }
+  .nav-row .btn-main { background: var(--primary); color: #fff; border: none; }
+  .nav-row .btn-main:hover { background: #1453c9; }
+  .nav-row .btn-sub { background: #fff; color: var(--primary); border: 1.5px solid var(--primary); }
+  .nav-row .btn-sub:hover { background: var(--primary-weak); }
+
+  /* ===== 照片轮播（链家式） ===== */
+  .photo-box { margin: 0 28px 18px; }
+  .photo-main { position: relative; height: 260px; border-radius: 12px; overflow: hidden; background: #eef1f6; }
+  .photo-main img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .photo-nav {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    width: 34px; height: 34px; border-radius: 50%;
+    background: rgba(0,0,0,.45); color: #fff; border: none; font-size: 16px;
+    cursor: pointer; z-index: 2; line-height: 1;
+  }
+  .photo-nav:hover { background: rgba(0,0,0,.65); }
+  .photo-nav.prev { left: 10px; }
+  .photo-nav.next { right: 10px; }
+  .photo-count {
+    position: absolute; right: 10px; bottom: 10px; z-index: 2;
+    background: rgba(0,0,0,.55); color: #fff; font-size: 11.5px;
+    border-radius: 999px; padding: 3px 10px;
+  }
+  .photo-thumbs { display: flex; gap: 8px; margin-top: 10px; overflow-x: auto; padding-bottom: 4px; }
+  .photo-thumbs img {
+    width: 64px; height: 48px; object-fit: cover; border-radius: 8px;
+    cursor: pointer; border: 2px solid transparent; flex-shrink: 0;
+  }
+  .photo-thumbs img.on { border-color: var(--primary); }
+
+  /* ===== 更新动态折叠 ===== */
+  .upd { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin-bottom: 14px; }
+  .upd-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px; cursor: pointer; background: #fafbfd;
+    font-size: 13px; font-weight: 600;
+  }
+  .upd-head:hover { background: #f0f4fa; }
+  .upd-head .upd-arrow { transition: transform .2s; color: var(--muted); font-size: 11px; }
+  .upd.open .upd-arrow { transform: rotate(180deg); }
+  .upd-body { display: none; padding: 6px 14px 12px; }
+  .upd.open .upd-body { display: block; }
+  .upd-item { font-size: 12.5px; color: #4b5563; padding: 6px 0; border-bottom: 1px dashed var(--line); line-height: 1.7; }
+  .upd-item:last-child { border-bottom: none; }
+  .upd-time { color: var(--primary); font-weight: 600; }
+
+  /* ===== 更多筛选（京东式多选） ===== */
+  .more-filters { display: none; padding-top: 8px; border-top: 1px dashed var(--line); max-height: 46vh; overflow-y: auto; }
+  .filters.open .more-filters { display: block; }
+  .filters .mf-toggle {
+    border: none; background: none; color: var(--primary); font-size: 12px;
+    cursor: pointer; text-align: left; padding: 2px 0; font-weight: 500;
+  }
+  .filters .mf-sec { font-size: 11.5px; color: var(--muted); margin: 9px 0 4px; font-weight: 600; }
+  .filters .mf-chks { display: flex; flex-wrap: wrap; gap: 5px; }
+  .filters .mf-chk {
+    font-size: 11.5px; border: 1px solid var(--line); border-radius: 999px;
+    padding: 3px 9px; cursor: pointer; background: #fff; color: #374151;
+    display: inline-flex; align-items: center; gap: 4px; user-select: none;
+  }
+  .filters .mf-chk.on { background: var(--primary-weak); border-color: var(--primary); color: var(--primary); }
+  .filters .mf-chk .c { font-size: 10px; color: var(--muted); }
+  .filters .mf-chk.on .c { color: var(--primary); }
+  .filters .mf-range { display: flex; align-items: center; gap: 6px; }
+  .filters .mf-range input {
+    flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid var(--line);
+    border-radius: 8px; font-size: 12.5px; background: #fff; color: var(--text); outline: none;
+  }
+  .filters .mf-range input:focus { border-color: var(--primary); }
+  .filters .mf-range span { color: var(--muted); font-size: 12px; }
+  .filters .mf-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); margin-top: 9px; }
+  .filters .mf-row input[type=checkbox] { accent-color: var(--primary); width: 14px; height: 14px; }
+  .filters .mf-clear {
+    margin-top: 10px; width: 100%; border: 1px solid var(--line); background: #fff;
+    border-radius: 8px; padding: 7px; font-size: 12.5px; color: var(--muted); cursor: pointer;
+  }
+  .filters .mf-clear:hover { color: #c0392b; border-color: #f0b4ad; }
+
+  @media (max-width: 860px) {
+    .panel { width: 86%; max-width: 340px; }
+    .ov-grid { grid-template-columns: repeat(2, 1fr); }
+    .cmp-chips { max-width: 40vw; }
+  }
+
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">📍</div>
+  <div>
+    <h1>朝阳区产业孵化器地图</h1>
+    <div class="sub">点击地图标记查看园区详情 · 演示数据</div>
+  </div>
+  <div class="spacer"></div>
+  <button class="btn" onclick="openHelp()">📖 数据如何维护</button>
+</header>
+
+<div class="main">
+  <!-- 侧边抽屉 -->
+  <aside class="panel" id="panel">
+    <div class="drawer-head">
+      <span>🏢 园区列表</span>
+      <button onclick="toggleDrawer()" title="收起">✕</button>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="num" id="stTotal">0</div><div class="lbl">孵化器 / 园区</div></div>
+      <div class="stat"><div class="num" id="stDistrict">0</div><div class="lbl">覆盖街道片区</div></div>
+      <div class="stat"><div class="num" id="stFirm">0</div><div class="lbl">入驻企业总数</div></div>
+      <div class="stat"><div class="num" id="stArea">0</div><div class="lbl">建筑面积（万㎡）</div></div>
+    </div>
+    <div class="filters" id="filters">
+      <input type="text" id="kw" placeholder="🔍 搜索名称 / 地址 / 领域…" oninput="applyFilter()">
+      <div class="row">
+        <select id="fDistrict" onchange="applyFilter()"></select>
+        <select id="fSort" onchange="applyFilter()">
+          <option value="">排序：默认</option>
+          <option value="rent-asc">租金从低到高</option>
+          <option value="rent-desc">租金从高到低</option>
+          <option value="firm-desc">入驻企业从多到少</option>
+          <option value="area-desc">面积从大到小</option>
+          <option value="newest">最近更新优先</option>
+        </select>
+      </div>
+      <button class="mf-toggle" onclick="this.parentElement.classList.toggle('open')">⚙ 更多筛选 ▾</button>
+      <div class="more-filters">
+        <div class="mf-sec">园区类型（可多选）</div>
+        <div class="mf-chks" id="fTypeC"></div>
+        <div class="mf-sec">载体级别（可多选）</div>
+        <div class="mf-chks" id="fLevelC"></div>
+        <div class="mf-sec">用地类型（可多选）</div>
+        <div class="mf-chks" id="fLandC"></div>
+        <div class="mf-sec">租金（元/㎡/天）</div>
+        <div class="mf-range"><input type="number" id="fRentMin" placeholder="最低" min="0" oninput="applyFilter()"><span>—</span><input type="number" id="fRentMax" placeholder="最高" min="0" oninput="applyFilter()"></div>
+        <div class="mf-sec">面积（万㎡）</div>
+        <div class="mf-range"><input type="number" id="fAreaMin" placeholder="最低" min="0" oninput="applyFilter()"><span>—</span><input type="number" id="fAreaMax" placeholder="最高" min="0" oninput="applyFilter()"></div>
+        <div class="mf-sec">入驻企业（家）</div>
+        <div class="mf-range"><input type="number" id="fFirmMin" placeholder="最低" min="0" oninput="applyFilter()"><span>—</span><input type="number" id="fFirmMax" placeholder="最高" min="0" oninput="applyFilter()"></div>
+        <div class="mf-row">
+          <input type="checkbox" id="fPhoto" onchange="applyFilter()">
+          <label for="fPhoto" style="flex:1">仅看有照片园区</label>
+        </div>
+        <button class="mf-clear" onclick="clearFilters()">清除全部筛选</button>
+      </div>
+    </div>
+    <div class="list-head"><span id="listCount"></span><span>点击查看详情</span></div>
+    <div class="list" id="list"></div>
+  </aside>
+
+  <!-- 地图 -->
+  <div id="map">
+    <div class="map-legend" id="legend"></div>
+  </div>
+  <button class="fab" id="fabBtn" onclick="toggleDrawer()"><span class="ico">☰</span>园区列表与筛选</button>
+</div>
+
+<!-- 对比浮条 -->
+<div class="cmp-bar hidden" id="cmpBar">
+  <span class="tt">已选园区</span>
+  <div class="cmp-chips" id="cmpChips"></div>
+  <button class="cmp-go" onclick="openCompare()">开始对比（<span id="cmpCount">0</span>）</button>
+  <button class="cmp-clear" onclick="clearCompare()">清空</button>
+</div>
+
+<!-- 详情视图 -->
+<div class="detail hidden" id="detailView">
+  <div class="detail-card" id="detailCard"></div>
+</div>
+
+<!-- 对比视图 -->
+<div class="compare hidden" id="compareView">
+  <div class="compare-card" id="compareCard"></div>
+</div>
+
+<!-- 数据维护说明 -->
+<div class="help hidden" id="helpView">
+  <div class="help-card">
+    <h2>📖 数据如何维护（无需写代码）</h2>
+    <h3>第一步：用 Excel 编辑数据</h3>
+    <ol>
+      <li>打开项目里的 <code>data.csv</code>（推荐用 WPS / Excel，双击即可）。</li>
+      <li>每个园区一行，照表头填：名称、街道、类型、经纬度、面积、企业数、聚焦领域（多个用 <code>|</code> 分隔）等。</li>
+      <li>经纬度：打开 <code>map.baidu.com</code> 或高德地图，右键目标位置复制坐标填入。</li>
+      <li>保存时保持 CSV 格式、UTF-8 编码、表头不要改动。</li>
+    </ol>
+    <h3>第二步：把 CSV 转成网页数据</h3>
+    <ol>
+      <li>打开终端，进入项目目录，运行：<code>python3 scripts/csv2js.py</code></li>
+      <li>脚本会自动生成最新的 <code>data.js</code>，直接覆盖旧文件。</li>
+    </ol>
+    <h3>第三步：刷新页面</h3>
+    <ol>
+      <li>重新打开 <code>index.html</code>（或刷新浏览器），新数据就出现在地图上了。</li>
+    </ol>
+    <h3>小技巧</h3>
+    <ol>
+      <li>不想用脚本？也可以直接编辑 <code>data.js</code>，复制一条现有数据改内容即可。</li>
+      <li>网址 / 电话等没有的内容留空字符串 <code>""</code>，页面会自动隐藏。</li>
+      <li>免费部署到公网：GitHub Pages / Cloudflare Pages / 腾讯云 EdgeOne Pages，把整个文件夹传上去即可，不需要买域名。</li>
+    </ol>
+    <button class="close" onclick="closeHelp()">知道了</button>
+  </div>
+</div>
+
+<script src="lib/leaflet.js"></script>
+<script src="lib/geo-beijing.js"></script>
+<script src="data.js"></script>
+<script>
+/* ============ 数据与常量 ============ */
+var DATA = window.PARK_DATA || [];
+var TYPE_COLOR = {
+  "科技孵化器": "#1e6fff",
+  "文创园区":   "#9b59f6",
+  "综合孵化器": "#16a34a",
+  "数字经济":   "#f59e0b",
+  "医疗健康":   "#0e7490"
+};
+var TYPE_ICON = {
+  "科技孵化器": "💻",
+  "文创园区":   "🎨",
+  "综合孵化器": "🏢",
+  "数字经济":   "📊",
+  "医疗健康":   "⚕️"
+};
+var FALLBACK_COLOR = "#64748b";
+/* 园区级别（国家级 > 省市级 > 区级 > 校级 > 其他） */
+var LEVEL_META = {
+  "国家级": { color: "#d4a017", short: "国" },
+  "省市级": { color: "#378ADD", short: "市" },
+  "区级":   { color: "#639922", short: "区" },
+  "校级":   { color: "#7F77DD", short: "校" },
+  "其他":   { color: "#9aa3b2", short: "—" }
+};
+
+/* ============ 地图初始化 ============ */
+var map = L.map("map", { zoomControl: true });
+var TILE_PROVIDERS = {
+  "高德": {
+    url: "https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}",
+    subdomains: "1234",
+    attr: "© AutoNavi 高德地图"
+  },
+  "腾讯": {
+    url: "https://rt{s}.map.gtimg.com/realtimerender?z={z}&x={x}&y={y}&type=vector&style=0",
+    subdomains: "0123",
+    attr: "© Tencent 腾讯地图"
+  },
+  "OpenStreetMap": {
+    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    subdomains: "abc",
+    attr: "© OpenStreetMap contributors"
+  }
+};
+var tileLayer = null;
+function useTile(name) {
+  var p = TILE_PROVIDERS[name];
+  if (!p) return;
+  if (tileLayer) { map.removeLayer(tileLayer); }
+  tileLayer = L.tileLayer(p.url, { subdomains: p.subdomains, attribution: p.attr, maxZoom: 18 });
+  tileLayer.addTo(map);
+}
+useTile("高德");
+
+/* ============ 行政边界（朝阳区清新蓝线 + 邻区淡灰填充） ============ */
+var CHAOYANG_BORDER = "#6cb3e8"; // 主描边色（柔和天蓝，小清新）
+function drawBoundary() {
+  var geo = window.GEO_BEIJING;
+  if (!geo || !geo.features) return;
+  geo.features.forEach(function (f) {
+    var name = (f.properties && f.properties.name) || "";
+    var isChaoyang = name === "朝阳区";
+    if (isChaoyang) {
+      // 三层描边：浅蓝光晕 → 白色衬线 → 天蓝主描边；朝阳区内部不填充
+      L.geoJSON(f, { style: { color: CHAOYANG_BORDER, weight: 16, opacity: 0.22, fill: false }, interactive: false }).addTo(map);
+      L.geoJSON(f, { style: { color: "#ffffff", weight: 11, opacity: 0.95, fill: false }, interactive: false }).addTo(map);
+      L.geoJSON(f, { style: { color: CHAOYANG_BORDER, weight: 7, opacity: 1, fill: false }, interactive: false }).addTo(map);
+    } else {
+      // 邻区：浅灰描边 + 淡灰填充，衬托朝阳区
+      L.geoJSON(f, { style: { color: "#7d8798", weight: 1.6, opacity: 0.55, fillColor: "#a9b2c0", fillOpacity: 0.18 }, interactive: false }).addTo(map);
+    }
+  });
+}
+
+/* ============ 图例（可折叠：图标 + 颜色 + 数量 + 级别） ============ */
+var LG_KEY = "cy_legend_collapsed";
+function legendCollapsedDefault() {
+  try {
+    var saved = localStorage.getItem(LG_KEY);
+    if (saved != null) return saved === "1";
+  } catch (e) {}
+  return window.innerWidth < 860; // 手机默认折叠
+}
+function applyLegendState() {
+  var el = document.getElementById("legend");
+  var collapsed = legendCollapsedDefault();
+  el.classList.toggle("collapsed", collapsed);
+  var btn = el.querySelector(".lg-fold");
+  if (btn) btn.textContent = collapsed ? "＋" : "－";
+}
+function toggleLegend() {
+  var el = document.getElementById("legend");
+  var collapsed = el.classList.toggle("collapsed");
+  try { localStorage.setItem(LG_KEY, collapsed ? "1" : "0"); } catch (e) {}
+  var btn = el.querySelector(".lg-fold");
+  if (btn) btn.textContent = collapsed ? "＋" : "－";
+}
+function renderLegend() {
+  var counts = {};
+  DATA.forEach(function (d) { counts[d.type] = (counts[d.type] || 0) + 1; });
+  var lvCounts = {};
+  DATA.forEach(function (d) { lvCounts[d.level] = (lvCounts[d.level] || 0) + 1; });
+  var html = '<div class="lg-head"><span>🗺 图例</span><button class="lg-fold" onclick="event.stopPropagation();toggleLegend()" title="折叠/展开">－</button></div>' +
+    '<div class="lg-body">';
+  html += '<div class="lg-sec">🏷️ 园区类型</div>';
+  Object.keys(TYPE_COLOR).forEach(function (t) {
+    if (!counts[t]) return;
+    html += '<div class="lg-row">' +
+      '<span class="lg-ico" style="background:' + TYPE_COLOR[t] + '">' + (TYPE_ICON[t] || "") + "</span>" +
+      esc(t) + '<span class="lg-n">×' + counts[t] + "</span></div>";
+  });
+  html += '<div class="lg-sec">🎖️ 载体级别</div>';
+  Object.keys(LEVEL_META).forEach(function (lv) {
+    var n = lvCounts[lv] || 0;
+    if (!n) return;
+    html += '<div class="lg-row"><span class="lg-ico" style="background:' + LEVEL_META[lv].color + ';font-size:10px;font-weight:700;color:#fff">' +
+      LEVEL_META[lv].short + "</span>" + esc(lv) + '<span class="lg-n">×' + n + "</span></div>";
+  });
+  html += "</div>";
+  document.getElementById("legend").innerHTML = html;
+  applyLegendState();
+}
+
+/* ============ 标记（彩色圆底 + 图标） ============ */
+var markers = {};
+function pinIcon(type, big, label, level) {
+  var color = TYPE_COLOR[type] || FALLBACK_COLOR;
+  var icon = TYPE_ICON[type] || "🏷️";
+  var lv = LEVEL_META[level] || LEVEL_META["其他"];
+  var short = (label || "").length > 16 ? label.slice(0, 15) + "…" : label;
+  return L.divIcon({
+    className: "pin" + (big ? " big" : ""),
+    html: '<div class="circle" style="background:' + color + ';--c:' + color + '">' + icon + "</div>" +
+          '<div class="lv" style="background:' + lv.color + '" title="' + esc(level || "其他") + '级载体">' + lv.short + "</div>" +
+          (short ? '<div class="label" title="' + esc(label) + '">' + esc(short) + "</div>" : ""),
+    iconSize: [0, 0], iconAnchor: [0, 0], popupAnchor: [0, -18]
+  });
+}
+function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+
+function buildMarkers() {
+  markers = {};
+  DATA.forEach(function (d) {
+    var m = L.marker([d.lat, d.lng], { icon: pinIcon(d.type, false, d.name, d.level), title: d.name });
+    var focusHtml = (d.focus || "").split("|").filter(Boolean).slice(0, 3)
+      .map(function (f) { return '<span class="pop-tag">' + esc(f) + "</span>"; }).join("");
+    m.bindPopup(
+      '<div class="pop-title">' + esc(d.name) + "</div>" +
+      '<div class="pop-row">📍 ' + esc(d.address || "") + "</div>" +
+      '<div class="pop-row">🏢 入驻企业 <b>' + esc(d.enterprises) + '</b> 家 · 租金 <b>' + (d.rent || "—") + '</b> 元/㎡/天</div>' +
+      (focusHtml ? '<div class="pop-tags">' + focusHtml + "</div>" : "") +
+      '<button class="pop-cmp" data-id="' + esc(d.id) + '" onclick="toggleCompare(\'' + esc(d.id) + '\')" style="display:block;width:100%;text-align:center;margin-top:8px;background:#fff;color:var(--primary);border:1.5px solid var(--primary);border-radius:8px;padding:7px 0;font-size:13px;cursor:pointer">' +
+        (compareSet.has(d.id) ? "✓ 已加入对比" : "＋ 加入对比") + "</button>" +
+      '<button class="pop-btn" onclick="location.hash=\'#/detail/' + esc(d.id) + '\'">查看详情 →</button>'
+    );
+    m.on("click", function () { closeDrawer(); map.flyTo([d.lat, d.lng], Math.max(map.getZoom(), 13), { duration: .5 }); });
+    m.on("popupopen", function () { map.flyTo([d.lat, d.lng], Math.max(map.getZoom(), 13), { duration: .5 }); });
+    m.addTo(map);
+    markers[d.id] = m;
+  });
+}
+
+/* ============ 对比配置与逻辑（懂车帝式） ============ */
+var COMPARE_ROWS = [
+  { g: "基本信息", rows: [
+    { k: "type", t: "类型" },
+    { k: "level", t: "载体级别" },
+    { k: "landType", t: "用地类型" },
+    { k: "district", t: "街道" },
+    { k: "founded", t: "成立年份" },
+    { k: "areaSqm", t: "面积（万㎡）", dir: "max", fmt: function (v) { return v + " 万㎡"; } },
+    { k: "enterprises", t: "入驻企业（家）", dir: "max", fmt: function (v) { return Number(v).toLocaleString("zh-CN"); } }
+  ]},
+  { g: "资质与许可", rows: [
+    { k: "landType", t: "用地类型" },
+    { k: "huanping", t: "环评" },
+    { k: "weifei", t: "危废处置" },
+    { k: "bsl", t: "生物安全" },
+    { k: "gmp", t: "GMP 厂房" },
+    { k: "medical", t: "医疗器械条件" }
+  ]},
+  { g: "设施与实验室", rows: [
+    { k: "lab", t: "共享实验室" },
+    { k: "analyze", t: "分析平台" },
+    { k: "animal", t: "SPF 动物房" },
+    { k: "pilot", t: "中试产线" },
+    { k: "coldchain", t: "冷链" }
+  ]},
+  { g: "成本与政策", rows: [
+    { k: "rent", t: "租金（元/㎡/天）", dir: "min", fmt: function (v) { return v + " 元"; } },
+    { k: "propertyFee", t: "物业费（元/㎡/月）", dir: "min", fmt: function (v) { return v + " 元"; } },
+    { k: "freeMonths", t: "免租期（月）", dir: "max", fmt: function (v) { return v + " 个月"; } },
+    { k: "subsidy", t: "房租补贴" },
+    { k: "fund", t: "基金 / 资金支持" },
+    { k: "talent", t: "人才政策" }
+  ]},
+  { g: "区位与服务", rows: [
+    { k: "metro", t: "最近地铁" },
+    { k: "hospital", t: "临床医院" },
+    { k: "occupancy", t: "入驻率", dir: "max", fmt: function (v) { return v + "%"; } },
+    { k: "operator", t: "运营方" },
+    { k: "benchmark", t: "毕业标杆" }
+  ]}
+];
+var CMP_KEY = "cy_cmp_v2";
+var compareSet = new Set();
+try { compareSet = new Set(JSON.parse(localStorage.getItem(CMP_KEY) || "[]")); } catch (e) {}
+
+function saveCompare() { localStorage.setItem(CMP_KEY, JSON.stringify(Array.from(compareSet))); }
+
+function toggleCompare(id) {
+  if (compareSet.has(id)) { compareSet.delete(id); }
+  else {
+    if (compareSet.size >= 5) { alert("最多同时对比 5 个园区"); return; }
+    compareSet.add(id);
+  }
+  saveCompare();
+  renderCompareBar();
+  syncCheckboxes();
+  updatePopupBtn(id);
+}
+
+function clearCompare() {
+  compareSet.clear(); saveCompare(); renderCompareBar(); syncCheckboxes();
+  var cv = document.getElementById("compareView");
+  if (!cv.classList.contains("hidden")) renderCompare();
+}
+
+function cmpName(d) { return (d.name || "").length > 8 ? d.name.slice(0, 8) + "…" : d.name; }
+
+function renderCompareBar() {
+  var bar = document.getElementById("cmpBar");
+  var n = compareSet.size;
+  document.getElementById("cmpCount").textContent = n;
+  if (!n) { bar.classList.add("hidden"); return; }
+  bar.classList.remove("hidden");
+  document.getElementById("cmpChips").innerHTML = Array.from(compareSet).map(function (id) {
+    var d = byId(id);
+    return d ? '<span class="cmp-chip" title="' + esc(d.name) + '">' + esc(cmpName(d)) + "</span>" : "";
+  }).join("");
+}
+
+function syncCheckboxes() {
+  document.querySelectorAll(".item .cb").forEach(function (cb) {
+    cb.checked = compareSet.has(cb.dataset.id);
+  });
+}
+
+function updatePopupBtn(id) {
+  var btn = document.querySelector('.leaflet-popup .pop-cmp[data-id="' + id + '"]');
+  if (btn) {
+    btn.textContent = compareSet.has(id) ? "✓ 已加入对比" : "＋ 加入对比";
+    btn.style.opacity = compareSet.has(id) ? 0.75 : 1;
+  }
+}
+
+function openCompare() {
+  if (compareSet.size < 2) { alert("请先勾选至少 2 个园区加入对比"); return; }
+  location.hash = "#/compare";
+}
+
+function renderCompare() {
+  var ids = Array.from(compareSet);
+  var parks = ids.map(function (id) { return byId(id); }).filter(Boolean);
+  var card = document.getElementById("compareCard");
+  if (parks.length < 2) {
+    card.innerHTML = '<div class="compare-head"><h2>园区对比</h2><div style="flex:1"></div>' +
+      '<button class="back" onclick="location.hash=\'#/\'">← 返回地图</button></div>' +
+      '<div class="cmp-empty">已选园区不足 2 个，请返回地图勾选后重新对比</div>';
+    return;
+  }
+  // 最优值计算（数值字段 dir: min/max）
+  var best = {};
+  COMPARE_ROWS.forEach(function (grp) {
+    grp.rows.forEach(function (row) {
+      if (!row.dir) return;
+      var vals = parks.map(function (p) { return +p[row.k]; }).filter(function (v) { return !isNaN(v); });
+      if (!vals.length) return;
+      best[row.k] = row.dir === "min" ? Math.min.apply(null, vals) : Math.max.apply(null, vals);
+    });
+  });
+  function cell(park, row) {
+    var raw = park[row.k];
+    if (raw === "" || raw == null) return '<td>—</td>';
+    var v = row.fmt ? row.fmt(raw) : esc(raw);
+    var cls = (row.dir && best[row.k] != null && +raw === best[row.k]) ? ' class="best"' : "";
+    return "<td" + cls + ">" + v + "</td>";
+  }
+  var head = '<tr><th>指标</th>' + parks.map(function (p) {
+    return "<th>" + esc(cmpName(p)) +
+      '<button class="cmp-remove" title="移出对比" onclick="removeCompare(\'' + esc(p.id) + '\')">✕</button>' + "</th>";
+  }).join("") + "</tr>";
+  var body = COMPARE_ROWS.map(function (grp) {
+    var h = '<tr class="grp-row"><td colspan="' + (parks.length + 1) + '">' + grp.g + "</td></tr>";
+    return h + grp.rows.map(function (row) {
+      return "<tr><td>" + row.t + "</td>" + parks.map(function (p) { return cell(p, row); }).join("") + "</tr>";
+    }).join("");
+  }).join("");
+  card.innerHTML =
+    '<div class="compare-head"><h2>园区对比（' + parks.length + " 个）</h2>" +
+    '<span style="font-size:12px;color:var(--muted)">蓝色 = 该指标更优</span><div style="flex:1"></div>' +
+    '<button class="cmp-clear" onclick="clearCompare()">清空对比</button>' +
+    '<button class="back" onclick="location.hash=\'#/\'">← 返回地图</button></div>' +
+    '<div class="compare-wrap"><table class="cmp-table"><thead>' + head + "</thead><tbody>" + body + "</tbody></table></div>";
+}
+
+function removeCompare(id) {
+  compareSet.delete(id); saveCompare(); renderCompareBar(); syncCheckboxes(); renderCompare();
+}
+
+/* ============ 抽屉开关 ============ */
+function toggleDrawer() {
+  var p = document.getElementById("panel");
+  var willOpen = !p.classList.contains("open");
+  p.classList.toggle("open", willOpen);
+  document.getElementById("fabBtn").style.display = willOpen ? "none" : "flex";
+}
+function closeDrawer() {
+  document.getElementById("panel").classList.remove("open");
+  document.getElementById("fabBtn").style.display = "flex";
+}
+
+/* ============ 左侧面板 ============ */
+function fmt(n) { return (n || 0).toLocaleString("zh-CN"); }
+
+function renderStats() {
+  document.getElementById("stTotal").textContent = DATA.length;
+  document.getElementById("stDistrict").textContent = new Set(DATA.map(function (d) { return d.district; })).size;
+  document.getElementById("stFirm").textContent = fmt(DATA.reduce(function (s, d) { return s + (+d.enterprises || 0); }, 0));
+  document.getElementById("stArea").textContent = (DATA.reduce(function (s, d) { return s + (+d.areaSqm || 0); }, 0)).toFixed(1);
+}
+
+/* ============ 筛选（京东式多选 + 区间） ============ */
+var selTypes = new Set(), selLevels = new Set(), selLands = new Set();
+
+function fillSelects() {
+  var districts = Array.from(new Set(DATA.map(function (d) { return d.district; }))).sort();
+  var s1 = document.getElementById("fDistrict");
+  s1.innerHTML = '<option value="">全部街道</option>' + districts.map(function (x) { return '<option value="' + esc(x) + '">' + esc(x) + "</option>"; }).join("");
+  renderFilterChecks();
+}
+
+function chkHtml(contId, set, keyFn, values) {
+  var counts = {};
+  DATA.forEach(function (d) { var k = keyFn(d); counts[k] = (counts[k] || 0) + 1; });
+  document.getElementById(contId).innerHTML = values.map(function (v) {
+    var n = counts[v] || 0;
+    if (!n) return "";
+    return '<span class="mf-chk' + (set.has(v) ? " on" : "") + '" onclick="toggleChk(this,\'' +
+      contId + '\',\'' + esc(v).replace(/'/g, "\\'") + '\')">' + esc(v) +
+      '<span class="c">' + n + "</span></span>";
+  }).join("");
+}
+function toggleChk(el, contId, v) {
+  var set = contId === "fTypeC" ? selTypes : contId === "fLevelC" ? selLevels : selLands;
+  if (set.has(v)) set.delete(v); else set.add(v);
+  el.classList.toggle("on", set.has(v));
+  applyFilter();
+}
+function renderFilterChecks() {
+  chkHtml("fTypeC", selTypes, function (d) { return d.type; },
+          Array.from(new Set(DATA.map(function (d) { return d.type; }))).sort());
+  chkHtml("fLevelC", selLevels, function (d) { return d.level || "其他"; },
+          ["国家级", "省市级", "区级", "校级", "其他"]);
+  chkHtml("fLandC", selLands, function (d) { return d.landType; },
+          Array.from(new Set(DATA.map(function (d) { return d.landType; }))).sort());
+}
+function clearFilters() {
+  selTypes.clear(); selLevels.clear(); selLands.clear();
+  document.getElementById("kw").value = "";
+  document.getElementById("fDistrict").value = "";
+  document.getElementById("fSort").value = "";
+  document.getElementById("fPhoto").checked = false;
+  ["fRentMin", "fRentMax", "fAreaMin", "fAreaMax", "fFirmMin", "fFirmMax"].forEach(function (id) {
+    document.getElementById(id).value = "";
+  });
+  renderFilterChecks();
+  applyFilter();
+}
+
+function visibleList() {
+  var kw = document.getElementById("kw").value.trim().toLowerCase();
+  var fd = document.getElementById("fDistrict").value;
+  var fs = document.getElementById("fSort").value;
+  var rmin = +document.getElementById("fRentMin").value || 0;
+  var rmax = +document.getElementById("fRentMax").value || Infinity;
+  var amin = +document.getElementById("fAreaMin").value || 0;
+  var amax = +document.getElementById("fAreaMax").value || Infinity;
+  var fmin = +document.getElementById("fFirmMin").value || 0;
+  var fmax = +document.getElementById("fFirmMax").value || Infinity;
+  var fph = document.getElementById("fPhoto").checked;
+  var list = DATA.filter(function (d) {
+    if (fd && d.district !== fd) return false;
+    if (selTypes.size && !selTypes.has(d.type)) return false;
+    if (selLevels.size && !selLevels.has(d.level || "其他")) return false;
+    if (selLands.size && !selLands.has(d.landType)) return false;
+    var r = +d.rent || 0, a = +d.areaSqm || 0, f = +d.enterprises || 0;
+    if (r < rmin || r > rmax) return false;
+    if (a < amin || a > amax) return false;
+    if (f < fmin || f > fmax) return false;
+    if (fph && !(d.photos && d.photos.length)) return false;
+    if (kw) {
+      var hay = (d.name + " " + d.address + " " + d.focus + " " + d.description + " " + (d.tenants || "")).toLowerCase();
+      if (hay.indexOf(kw) < 0) return false;
+    }
+    return true;
+  });
+  if (fs) {
+    if (fs === "newest") {
+      list = list.slice().sort(function (a, b) {
+        return String(b.updateTime || "").localeCompare(String(a.updateTime || ""));
+      });
+    } else {
+      var key = fs.split("-")[0], dir = fs.split("-")[1];
+      list = list.slice().sort(function (a, b) {
+        var va = key === "rent" ? (+a.rent || 0) : key === "firm" ? (+a.enterprises || 0) : (+a.areaSqm || 0);
+        var vb = key === "rent" ? (+b.rent || 0) : key === "firm" ? (+b.enterprises || 0) : (+b.areaSqm || 0);
+        return dir === "asc" ? va - vb : vb - va;
+      });
+    }
+  }
+  return list;
+}
+
+function applyFilter() {
+  var vis = visibleList();
+  var ids = new Set(vis.map(function (d) { return d.id; }));
+  Object.keys(markers).forEach(function (id) {
+    markers[id].setOpacity(ids.has(id) ? 1 : 0.18);
+  });
+  document.getElementById("listCount").textContent = "共 " + vis.length + " 个园区";
+  renderList(vis);
+}
+
+function renderList(items) {
+  var box = document.getElementById("list");
+  if (!items.length) {
+    box.innerHTML = '<div class="empty">没有匹配的园区，试试调整筛选条件</div>';
+    return;
+  }
+  box.innerHTML = items.map(function (d) {
+    var color = TYPE_COLOR[d.type] || FALLBACK_COLOR;
+    return '<div class="item" data-id="' + esc(d.id) + '">' +
+      '<input type="checkbox" class="cb" data-id="' + esc(d.id) + '" title="加入对比" ' + (compareSet.has(d.id) ? "checked" : "") + '>' +
+      '<span class="dot" style="background:' + color + '"></span>' +
+      '<div style="flex:1;min-width:0">' +
+      '<div class="t">' + esc(d.name) + "</div>" +
+      '<div class="m">' + esc(d.district) + " · 入驻企业 " + esc(d.enterprises) + " 家 · 租金 " + (d.rent || "—") + " 元/㎡/天</div>" +
+      '<span class="tag" style="background:' + color + '">' + esc(d.type) + "</span>" +
+      "</div></div>";
+  }).join("");
+  box.querySelectorAll(".item").forEach(function (el) {
+    var cb = el.querySelector(".cb");
+    cb.addEventListener("click", function (e) {
+      e.stopPropagation();
+      toggleCompare(el.dataset.id);
+    });
+    el.addEventListener("click", function (e) {
+      if (e.target !== cb) openDetail(el.dataset.id);
+    });
+  });
+}
+
+/* ============ 详情页（hash 路由） ============ */
+function byId(id) { return DATA.find(function (d) { return d.id === id; }); }
+
+function chips(list, gray) {
+  return (list || []).filter(Boolean).map(function (x) {
+    return '<span class="chip' + (gray ? " gray" : "") + '">' + esc(x) + "</span>";
+  }).join("");
+}
+
+function openDetail(id) {
+  var d = byId(id);
+  if (!d) return;
+  closeDrawer();
+  var color = TYPE_COLOR[d.type] || FALLBACK_COLOR;
+  var focusList = (d.focus || "").split("|");
+  var serviceList = (d.services || "").split("|");
+  var website = d.website ? '<a href="' + esc(d.website) + '" target="_blank" rel="noopener">' + esc(d.website) + "</a>" : '<span style="color:#9ca3af">暂无</span>';
+  var inCmp = compareSet.has(d.id);
+  var navUrl = "https://uri.amap.com/navigation?to=" + d.lng + "," + d.lat + "," + encodeURIComponent(d.name) + "&mode=car&callnative=0";
+  var photos = d.photos || [];
+  // 指标分组渲染（无值的行自动隐藏）
+  function grpHtml(grp) {
+    var rows = grp.rows.map(function (row) {
+      var raw = d[row.k];
+      if (raw === "" || raw == null) return "";
+      var v = row.fmt ? row.fmt(raw) : esc(raw);
+      return "<tr><td>" + row.t + "</td><td>" + v + "</td></tr>";
+    }).filter(Boolean).join("");
+    return rows ? '<div class="grp"><div class="grp-title">' + grp.g + '</div><table>' + rows + "</table></div>" : "";
+  }
+  // 租区/明细信息（Obsidian 笔记带来的字段）
+  var leaseRows = [
+    ["可租面积", d.leaseNote], ["面积明细", d.areaNote], ["层高", d.height],
+    ["位置", d.location], ["户型亮点", d.highlight], ["交付标准", d.delivery],
+    ["租金报价", d.rentRange], ["其他费用", d.feeNote], ["商务条款", d.terms],
+    ["公交", d.bus], ["入驻企业", d.tenants]
+  ].filter(function (r) { return r[1]; }).map(function (r) {
+    return "<tr><td>" + esc(r[0]) + "</td><td>" + esc(r[1]) + "</td></tr>";
+  }).join("");
+  // 更新动态（可折叠）
+  var updHtml = "";
+  if (d.updateLog && d.updateLog.length) {
+    updHtml = '<div class="upd" id="updBox"><div class="upd-head" onclick="toggleUpd()">' +
+      '<span>📝 更新动态 <span style="color:var(--muted);font-weight:400;font-size:12px">（' + esc(d.updateTime || "") + " 更新）</span></span>" +
+      '<span class="upd-arrow">▼</span></div><div class="upd-body">' +
+      d.updateLog.map(function (l) {
+        var t = l.indexOf("：");
+        return '<div class="upd-item"><span class="upd-time">' + esc(t > 0 ? l.slice(0, t + 1) : "") + "</span>" + esc(t > 0 ? l.slice(t + 1) : l) + "</div>";
+      }).join("") + "</div></div>";
+  }
+  var photoHtml = "";
+  if (photos.length) {
+    photoHtml = '<div class="photo-box" id="photoBox">' +
+      '<div class="photo-main">' +
+        '<img id="photoImg" src="' + esc(photos[0]) + '" alt="园区照片">' +
+        (photos.length > 1 ? '<button class="photo-nav prev" onclick="photoStep(-1)">‹</button><button class="photo-nav next" onclick="photoStep(1)">›</button>' : "") +
+        '<span class="photo-count">1 / ' + photos.length + "</span>" +
+      "</div>" +
+      (photos.length > 1 ? '<div class="photo-thumbs">' + photos.map(function (p, i) {
+        return '<img src="' + esc(p) + '" class="' + (i === 0 ? "on" : "") + '" onclick="photoJump(' + i + ')" alt="图' + (i + 1) + '">';
+      }).join("") + "</div>" : "") +
+    "</div>";
+  }
+  document.getElementById("detailCard").innerHTML =
+    '<div class="detail-hero">' +
+      '<button class="back" onclick="location.hash=\'#/\'">← 返回地图</button>' +
+      '<div class="name">' + esc(d.name) + "</div>" +
+      '<div class="meta">' +
+        '<span>📍 ' + esc(d.district) + " · " + esc(d.area) + "</span>" +
+        '<span style="background:' + color + ';padding:1px 8px;border-radius:5px;font-size:12px">' + esc(d.type) + "</span>" +
+        (d.level ? '<span style="background:' + (LEVEL_META[d.level] || {}).color + ';padding:1px 8px;border-radius:5px;font-size:12px">🎖 ' + esc(d.level) + "</span>" : "") +
+      "</div>" +
+    "</div>" +
+    '<div class="detail-body">' +
+      photoHtml +
+      '<div class="ov-grid">' +
+        '<div class="ov"><div class="n">' + (d.founded || "—") + "</div><div class=\"l\">成立年份</div></div>" +
+        '<div class="ov"><div class="n">' + (d.areaSqm || (d.areaNote ? "见详情" : 0)) + "</div><div class=\"l\">面积（万㎡）</div></div>" +
+        '<div class="ov"><div class="n">' + fmt(d.enterprises) + "</div><div class=\"l\">入驻企业</div></div>" +
+        '<div class="ov"><div class="n">' + (d.occupancy || "—") + "%</div><div class=\"l\">入驻率</div></div>" +
+      "</div>" +
+      updHtml +
+      COMPARE_ROWS.map(grpHtml).join("") +
+      (leaseRows ? '<div class="grp"><div class="grp-title">🏢 租区 / 物业信息</div><table>' + leaseRows + "</table></div>" : "") +
+      '<div class="sec-title">📋 联系方式</div>' +
+      '<table class="kv-table">' +
+        "<tr><td>详细地址</td><td>" + esc(d.address || "") + "</td></tr>" +
+        "<tr><td>联系电话</td><td>" + esc(d.contact || "") + "</td></tr>" +
+        "<tr><td>官方网站</td><td>" + website + "</td></tr>" +
+        "<tr><td>数据来源</td><td><span style=\"color:#6b7280;font-size:12.5px\">" + esc(d.source || "待核实") + "</span></td></tr>" +
+      "</table>" +
+      '<div class="sec-title">🎯 聚焦领域</div>' + chips(focusList) +
+      '<div class="sec-title">🛠 服务内容</div>' + chips(serviceList, true) +
+      '<div class="sec-title">📄 园区简介</div>' +
+      '<div class="detail-desc">' + esc(d.description || "") + "</div>" +
+      '<div class="nav-row">' +
+        (d.website ? '<a class="btn-main" href="' + esc(d.website) + '" target="_blank" rel="noopener">🌐 打开官网</a>' : "") +
+        '<a class="btn-main" href="' + navUrl + '" target="_blank" rel="noopener">🧭 一键导航</a>' +
+        '<button class="btn-sub" onclick="toggleCompare(\'' + esc(d.id) + '\');updateDetailCmp(this,' + inCmp + ')">' + (inCmp ? "✓ 已加入对比" : "＋ 加入对比") + "</button>" +
+        '<button class="btn-sub" onclick="locate(\'' + esc(d.id) + '\')">🗺 地图定位</button>' +
+      "</div>" +
+    "</div>";
+  photoIdx = 0;
+  window._curPhotos = photos;
+  document.getElementById("detailView").classList.remove("hidden");
+  document.getElementById("detailView").onclick = function (e) {
+    if (e.target === document.getElementById("detailView")) location.hash = "#/";
+  };
+}
+var photoIdx = 0;
+function photoStep(step) {
+  var box = document.getElementById("photoBox");
+  if (!box) return;
+  var imgs = box.querySelectorAll(".photo-thumbs img");
+  var n = imgs.length;
+  photoIdx = (photoIdx + step + n) % n;
+  renderPhoto(n);
+}
+function photoJump(i) {
+  photoIdx = i;
+  var imgs = document.getElementById("photoBox").querySelectorAll(".photo-thumbs img");
+  renderPhoto(imgs.length);
+}
+function renderPhoto(n) {
+  var box = document.getElementById("photoBox");
+  var photos = window._curPhotos || [];
+  if (!photos.length) return;
+  var img = document.getElementById("photoImg");
+  img.src = photos[photoIdx];
+  box.querySelector(".photo-count").textContent = (photoIdx + 1) + " / " + photos.length;
+  box.querySelectorAll(".photo-thumbs img").forEach(function (t, i) {
+    t.classList.toggle("on", i === photoIdx);
+  });
+}
+function toggleUpd() {
+  document.getElementById("updBox").classList.toggle("open");
+}
+function updateDetailCmp(btn, wasIn) {
+  btn.textContent = wasIn ? "＋ 加入对比" : "✓ 已加入对比";
+}
+
+function locate(id) {
+  var d = byId(id);
+  location.hash = "#/";
+  setTimeout(function () {
+    map.flyTo([d.lat, d.lng], 14, { duration: .8 });
+    setTimeout(function () { markers[id].openPopup(); }, 900);
+  }, 60);
+}
+
+/* ============ 帮助弹窗 ============ */
+function openHelp() { document.getElementById("helpView").classList.remove("hidden"); }
+function closeHelp() { document.getElementById("helpView").classList.add("hidden"); }
+document.getElementById("helpView").onclick = function (e) {
+  if (e.target === document.getElementById("helpView")) closeHelp();
+};
+
+/* ============ 路由 ============ */
+function route() {
+  var h = location.hash || "#/";
+  if (h.indexOf("#/detail/") === 0) {
+    openDetail(h.slice("#/detail/".length));
+  } else if (h === "#/compare") {
+    document.getElementById("detailView").classList.add("hidden");
+    document.getElementById("compareView").classList.remove("hidden");
+    renderCompare();
+  } else {
+    document.getElementById("detailView").classList.add("hidden");
+    document.getElementById("compareView").classList.add("hidden");
+  }
+}
+window.addEventListener("hashchange", route);
+
+/* ============ 启动 ============ */
+drawBoundary();
+buildMarkers();
+map.fitBounds(L.latLngBounds(DATA.map(function (d) { return [d.lat, d.lng]; })).pad(0.18));
+renderStats();
+renderLegend();
+renderCompareBar();
+fillSelects();
+document.getElementById("legend").addEventListener("click", function (e) {
+  if (!e.target.closest(".lg-fold")) toggleLegend();
+});
+applyFilter();
+route();
+</script>
+</body>
+</html>
